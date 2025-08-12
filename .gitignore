@@ -48,10 +48,12 @@ temp/
 *.tmp
 *.temp
 
-# Data files (optional - include if you want to share sample data)
-# data/reads/*.fastq
-# data/ref_sequence_genB.fa
-# data/ref_sequence_genB.fa.fai
+# Data files (large files - excluded from Git)
+data/reads/*.fastq
+data/reads/*.fq
+data/ref_sequence_genB.fa
+data/ref_sequence_genB.fa.fai
+data/ref_sequence_genB.fa.*
 
 # OS generated files
 .DS_Store
