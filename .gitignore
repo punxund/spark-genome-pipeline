@@ -1,0 +1,106 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Virtual environments
+venv/
+env/
+ENV/
+env.bak/
+venv.bak/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Logs
+*.log
+logs/
+
+# Results and output files
+results/
+temp/
+work/
+*.bam
+*.sam
+*.bw
+*.bed
+*.fastq
+*.fq
+*.fa
+*.fai
+*.amb
+*.ann
+*.bwt
+*.pac
+*.sa
+
+# Data files (large files) - 주석 처리하여 data 폴더 포함
+# data/
+*.fastq.gz
+*.fq.gz
+*.bam
+*.sam
+*.bw
+*.bed
+
+# Spark
+spark-events/
+spark-logs/
+
+# Temporary files
+*.tmp
+*.temp
+temp_*
+
+# Configuration files with sensitive data
+.env
+config.local.py
+
+# Jupyter notebooks
+.ipynb_checkpoints/
+
+# Coverage reports
+htmlcov/
+.coverage
+.coverage.*
+coverage.xml
+*.cover
+.hypothesis/
+.pytest_cache/
+
+# mypy
+.mypy_cache/
+.dmypy.json
+dmypy.json
