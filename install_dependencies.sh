@@ -66,7 +66,12 @@ if [ ${#MISSING_TOOLS[@]} -eq 0 ]; then
     echo "🎉 모든 의존성이 성공적으로 설치되었습니다!"
     echo ""
     echo "다음 명령어로 파이프라인을 실행할 수 있습니다:"
-    echo "python3 main.py"
+echo "python3 main.py"
+echo ""
+echo "데이터 준비:"
+echo "mkdir -p data/reads"
+echo "# FASTQ 파일들을 data/reads/에 복사"
+echo "# 참조 게놈을 data/ref_sequence_genB.fa로 복사"
 else
     echo ""
     echo "⚠️ 다음 도구들이 설치되지 않았습니다: ${MISSING_TOOLS[*]}"

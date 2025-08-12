@@ -3,14 +3,14 @@ from pathlib import Path
 
 class Config:
     # 데이터 경로
-    DATA_DIR = Path("../data")
+    DATA_DIR = Path("data")
     READS_DIR = DATA_DIR / "reads"
     REFERENCE_GENOME = DATA_DIR / "ref_sequence_genB.fa"
     REFERENCE_INDEX = DATA_DIR / "ref_sequence_genB.fa.fai"
     
     # 결과 저장 경로
-    RESULTS_DIR = Path("../results/spark_pipeline")
-    TEMP_DIR = Path("../temp")
+    RESULTS_DIR = Path("results/spark_pipeline")
+    TEMP_DIR = Path("temp")
     
     # Spark 설정
     SPARK_MASTER = "local[*]"

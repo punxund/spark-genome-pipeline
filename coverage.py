@@ -9,8 +9,6 @@ import shutil
 import os
 import json
 import pandas as pd
-import matplotlib.pyplot as plt
-import seaborn as sns
 
 from config import Config
 from utils import run_command, check_tool_availability, create_temp_file, cleanup_temp_files
@@ -75,22 +73,21 @@ def run_coverage_udf(sample_id: str, bam_file: str) -> dict:
             # 정렬 실패 시 원본 파일 사용
             shutil.copy2(coverage_bed, sorted_bed)
         
-        # 3. BigWig 파일 생성 (선택적)
+        # 3. BigWig 파일 생성 (subprocess로만 실행)
         bigwig_created = False
-        if check_tool_availability("bedGraphToBigWig", Config.BIGWIG_PATH):
-            bigwig_cmd = [
-                Config.BIGWIG_PATH,
-                str(sorted_bed),
-                str(Config.REFERENCE_INDEX),
-                str(bigwig_file)
-            ]
-            
-            bigwig_result = run_command(bigwig_cmd, check=False)
-            if bigwig_result.returncode == 0:
-                bigwig_created = True
-                logger.info(f"BigWig 파일 생성 완료: {sample_id}")
-            else:
-                logger.warning(f"BigWig 파일 생성 실패: {sample_id} - {bigwig_result.stderr}")
+        bigwig_cmd = [
+            Config.BIGWIG_PATH,
+            str(sorted_bed),
+            str(Config.REFERENCE_INDEX),
+            str(bigwig_file)
+        ]
+        
+        bigwig_result = run_command(bigwig_cmd, check=False)
+        if bigwig_result.returncode == 0:
+            bigwig_created = True
+            logger.info(f"BigWig 파일 생성 완료: {sample_id}")
+        else:
+            logger.warning(f"BigWig 파일 생성 실패: {sample_id} - {bigwig_result.stderr}")
         
         # 4. 커버리지 통계 계산
         coverage_stats = calculate_coverage_stats(sorted_bed)
@@ -188,10 +185,6 @@ class CoverageCalculator:
         # bedtools 도구 사용 가능 여부 확인
         if not check_tool_availability("bedtools", Config.BEDTOOLS_PATH):
             raise RuntimeError("bedtools 도구를 찾을 수 없습니다. 설치 후 다시 시도하세요.")
-        
-        # bigWig 도구 사용 가능 여부 확인
-        if not check_tool_availability("bedGraphToBigWig", Config.BIGWIG_PATH):
-            logger.warning("bedGraphToBigWig 도구를 찾을 수 없습니다. BigWig 파일 생성이 건너뜁니다.")
         
         # 참조 인덱스 파일 존재 확인
         if not self.reference_index.exists():
@@ -293,92 +286,7 @@ class CoverageCalculator:
         
         return summary
     
-    def create_coverage_plots(self, coverage_df: "pyspark.sql.DataFrame"):
-        """
-        커버리지 분포 플롯을 생성합니다.
-        
-        Args:
-            coverage_df: 커버리지 계산 결과 DataFrame
-        """
-        logger.info("커버리지 분포 플롯 생성")
-        
-        # 성공한 샘플들의 통계 수집
-        successful_samples = coverage_df.filter(col("coverage_result.status") == "success")
-        
-        if successful_samples.count() == 0:
-            logger.warning("플롯을 생성할 커버리지 데이터가 없습니다.")
-            return
-        
-        # 통계 데이터 수집
-        stats_data = []
-        for row in successful_samples.collect():
-            stats = row["coverage_result"]["coverage_stats"]
-            if stats:
-                # 문자열을 숫자로 변환
-                numeric_stats = {}
-                for key, value in stats.items():
-                    if key != 'sample_id':
-                        try:
-                            numeric_stats[key] = float(value)
-                        except (ValueError, TypeError):
-                            numeric_stats[key] = 0.0
-                    else:
-                        numeric_stats[key] = value
-                
-                numeric_stats['sample_id'] = row["coverage_result"]["sample_id"]
-                stats_data.append(numeric_stats)
-        
-        if not stats_data:
-            logger.warning("유효한 통계 데이터가 없습니다.")
-            return
-        
-        # DataFrame 생성
-        df = pd.DataFrame(stats_data)
-        
-        # 플롯 생성
-        fig, axes = plt.subplots(2, 2, figsize=(15, 12))
-        fig.suptitle('Coverage Analysis Summary', fontsize=16)
-        
-        # 1. 평균 커버리지 분포
-        axes[0, 0].hist(df['mean_coverage'], bins=20, alpha=0.7, color='skyblue', edgecolor='black')
-        axes[0, 0].set_xlabel('Mean Coverage')
-        axes[0, 0].set_ylabel('Number of Samples')
-        axes[0, 0].set_title('Distribution of Mean Coverage')
-        axes[0, 0].grid(True, alpha=0.3)
-        
-        # 2. 커버리지 범위별 샘플 수
-        coverage_ranges = ['no_coverage', 'low_coverage', 'medium_coverage', 'high_coverage', 'very_high_coverage']
-        range_counts = [df[f'{range}_regions'].mean() for range in coverage_ranges]
-        
-        axes[0, 1].bar(coverage_ranges, range_counts, color=['red', 'orange', 'yellow', 'lightgreen', 'green'])
-        axes[0, 1].set_xlabel('Coverage Range')
-        axes[0, 1].set_ylabel('Average Number of Regions')
-        axes[0, 1].set_title('Average Coverage Distribution by Range')
-        axes[0, 1].tick_params(axis='x', rotation=45)
-        
-        # 3. 샘플별 총 커버리지
-        axes[1, 0].bar(range(len(df)), df['total_bases_covered'], color='lightcoral')
-        axes[1, 0].set_xlabel('Sample Index')
-        axes[1, 0].set_ylabel('Total Bases Covered')
-        axes[1, 0].set_title('Total Coverage by Sample')
-        axes[1, 0].grid(True, alpha=0.3)
-        
-        # 4. 커버리지 통계 상자그림
-        coverage_stats = ['mean_coverage', 'median_coverage', 'max_coverage']
-        box_data = [df[stat] for stat in coverage_stats]
-        axes[1, 1].boxplot(box_data, labels=coverage_stats)
-        axes[1, 1].set_ylabel('Coverage')
-        axes[1, 1].set_title('Coverage Statistics Distribution')
-        axes[1, 1].grid(True, alpha=0.3)
-        
-        plt.tight_layout()
-        
-        # 플롯 저장
-        plot_file = Config.RESULTS_DIR / "coverage_analysis_plots.png"
-        plt.savefig(plot_file, dpi=300, bbox_inches='tight')
-        plt.close()
-        
-        logger.info(f"커버리지 플롯 저장: {plot_file}")
+
     
     def cleanup(self):
         """임시 파일들을 정리합니다."""
@@ -409,7 +317,6 @@ def run_coverage_calculation(spark: SparkSession, sam_processed_df: "pyspark.sql
         # 요약 보고서 생성
         if result_df.count() > 0:
             calculator.generate_coverage_report(result_df)
-            calculator.create_coverage_plots(result_df)
         
         return result_df
     finally:

@@ -5,41 +5,67 @@
 프로젝트 루트에서 다음과 같은 디렉토리 구조가 필요합니다:
 
 ```
-genCov/
-├── spark_genome_pipeline/     # 이 프로젝트
-│   ├── main.py
-│   ├── config.py
-│   ├── requirements.txt
-│   └── ...
-├── data/                      # 입력 데이터
-│   ├── reads/                 # FASTQ 파일들
+spark_genome_pipeline/     # 이 프로젝트
+├── main.py
+├── config.py
+├── requirements.txt
+├── data/                  # 입력 데이터
+│   ├── reads/             # FASTQ 파일들
 │   │   ├── SRR30977596_1.fastq
 │   │   └── SRR30977596_2.fastq
 │   └── ref_sequence_genB.fa   # 참조 게놈
-├── results/                   # 결과 파일들 (자동 생성)
+├── results/               # 결과 파일들 (자동 생성)
 │   └── spark_pipeline/
-└── temp/                      # 임시 파일들 (자동 생성)
+├── temp/                  # 임시 파일들 (자동 생성)
+└── ...
 ```
 
 ## 입력 파일 요구사항
 
 ### FASTQ 파일
-- **위치**: `../data/reads/`
+- **위치**: `data/reads/`
 - **파일명 형식**: `{sample_id}_1.fastq`, `{sample_id}_2.fastq`
 - **예시**: `SRR30977596_1.fastq`, `SRR30977596_2.fastq`
 
 ### 참조 게놈
-- **위치**: `../data/ref_sequence_genB.fa`
+- **위치**: `data/ref_sequence_genB.fa`
 - **형식**: FASTA
-- **인덱스**: `../data/ref_sequence_genB.fa.fai` (자동 생성됨)
+- **인덱스**: `data/ref_sequence_genB.fa.fai` (자동 생성됨)
 
 ## 실행 방법
 
+### Git을 통한 배포 (권장)
+
+1. **저장소 클론 및 설정**:
+   ```bash
+   git clone <repository-url>
+   cd spark_genome_pipeline
+   chmod +x setup.sh
+   ./setup.sh
+   ```
+
+2. **데이터 준비**:
+   ```bash
+   # FASTQ 파일들을 data/reads/에 복사
+   cp /path/to/your/*.fastq data/reads/
+   
+   # 참조 게놈을 data/ref_sequence_genB.fa로 복사
+   cp /path/to/reference.fa data/ref_sequence_genB.fa
+   ```
+
+3. **파이프라인 실행**:
+   ```bash
+   source venv/bin/activate
+   python main.py
+   ```
+
+### 수동 실행
+
 1. **데이터 준비**:
    ```bash
-   mkdir -p ../data/reads
-   # FASTQ 파일들을 ../data/reads/에 복사
-   # 참조 게놈을 ../data/ref_sequence_genB.fa로 복사
+   mkdir -p data/reads
+   # FASTQ 파일들을 data/reads/에 복사
+   # 참조 게놈을 data/ref_sequence_genB.fa로 복사
    ```
 
 2. **파이프라인 실행**:
@@ -49,7 +75,7 @@ genCov/
 
 3. **결과 확인**:
    ```bash
-   ls ../results/spark_pipeline/
+   ls results/spark_pipeline/
    ```
 
 ## 설정 변경
@@ -58,7 +84,7 @@ genCov/
 
 ```python
 # 데이터 경로
-DATA_DIR = Path("../data")
+DATA_DIR = Path("data")
 READS_DIR = DATA_DIR / "reads"
 REFERENCE_GENOME = DATA_DIR / "ref_sequence_genB.fa"
 ```

@@ -185,7 +185,8 @@ def test_sam_processing_module(spark: SparkSession):
 0 + 0 with mate mapped to a different chr
 0 + 0 with mate mapped to a different chr (mapQ>=5)"""
         
-        stats = processor.parse_flagstat(test_flagstat)
+        from sam_processing import parse_flagstat
+        stats = parse_flagstat(test_flagstat)
         logger.info(f"✓ 통계 파싱 테스트 성공: {stats}")
         
         processor.cleanup()
@@ -221,7 +222,8 @@ def test_coverage_module(spark: SparkSession):
         import tempfile
         with tempfile.NamedTemporaryFile(mode='w', suffix='.bed', delete=False) as f:
             test_df.to_csv(f.name, sep='\t', header=False, index=False)
-            stats = calculator.calculate_coverage_stats(Path(f.name))
+            from coverage import calculate_coverage_stats
+            stats = calculate_coverage_stats(Path(f.name))
         
         logger.info(f"✓ 통계 계산 테스트 성공: {stats}")
         

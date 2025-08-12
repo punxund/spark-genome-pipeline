@@ -21,21 +21,39 @@ wheels/
 *.egg
 MANIFEST
 
-# Virtual environments
+# Virtual Environment
 venv/
 env/
 ENV/
 env.bak/
 venv.bak/
 
-# IDE
-.vscode/
+# PyCharm
 .idea/
-*.swp
-*.swo
-*~
 
-# OS
+# VS Code
+.vscode/
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# Spark
+spark-warehouse/
+derby.log
+
+# Results and temporary files
+results/
+temp/
+*.log
+*.tmp
+*.temp
+
+# Data files (optional - include if you want to share sample data)
+# data/reads/*.fastq
+# data/ref_sequence_genB.fa
+# data/ref_sequence_genB.fa.fai
+
+# OS generated files
 .DS_Store
 .DS_Store?
 ._*
@@ -44,63 +62,7 @@ venv.bak/
 ehthumbs.db
 Thumbs.db
 
-# Logs
-*.log
-logs/
-
-# Results and output files
-results/
-temp/
-work/
-*.bam
-*.sam
-*.bw
-*.bed
-*.fastq
-*.fq
-*.fa
-*.fai
-*.amb
-*.ann
-*.bwt
-*.pac
-*.sa
-
-# Data files (large files) - 주석 처리하여 data 폴더 포함
-# data/
-*.fastq.gz
-*.fq.gz
-*.bam
-*.sam
-*.bw
-*.bed
-
-# Spark
-spark-events/
-spark-logs/
-
-# Temporary files
-*.tmp
-*.temp
-temp_*
-
-# Configuration files with sensitive data
-.env
-config.local.py
-
-# Jupyter notebooks
-.ipynb_checkpoints/
-
-# Coverage reports
-htmlcov/
-.coverage
-.coverage.*
-coverage.xml
-*.cover
-.hypothesis/
-.pytest_cache/
-
-# mypy
-.mypy_cache/
-.dmypy.json
-dmypy.json
+# Backup files
+*.bak
+*.backup
+*~

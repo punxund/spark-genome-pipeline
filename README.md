@@ -31,29 +31,47 @@
 - BWA (읽기 매핑)
 - samtools (SAM/BAM 처리)
 - bedtools (커버리지 계산)
-- bedGraphToBigWig (BigWig 파일 생성, 선택사항)
+- bedGraphToBigWig (BigWig 파일 생성)
 
 ### Python 패키지
 ```
 pyspark==3.5.0
-pandas==2.1.4
-numpy==1.24.3
-pybedtools==0.9.0
-pyBigWig==0.3.22
-matplotlib==3.8.2
-seaborn==0.13.0
-plotly==5.17.0
-fastq-pair==1.0.0
-pysam==0.21.0
+pandas==2.2.0
+numpy==1.26.4
 ```
 
 ## 설치
+
+### Git을 통한 설치 (권장)
 
 1. 저장소 클론:
 ```bash
 git clone <repository-url>
 cd spark_genome_pipeline
 ```
+
+2. 자동 설정 실행:
+```bash
+chmod +x setup.sh
+./setup.sh
+```
+
+3. 데이터 파일 준비:
+```bash
+# FASTQ 파일들을 data/reads/ 폴더에 복사
+cp /path/to/your/*.fastq data/reads/
+
+# 참조 게놈 파일을 data/ 폴더에 복사
+cp /path/to/reference.fa data/ref_sequence_genB.fa
+```
+
+4. 실행:
+```bash
+source venv/bin/activate
+python main.py
+```
+
+### 수동 설치
 
 2. Python 가상환경 생성 및 활성화:
 ```bash
@@ -71,16 +89,35 @@ pip install -r requirements.txt
 4. 생물정보학 도구 설치:
 ```bash
 # Ubuntu/Debian
-sudo apt-get install fastp bwa samtools bedtools
+sudo apt-get install fastp bwa samtools bedtools ucsc-bedgraphtobigwig
 
 # CentOS/RHEL
-sudo yum install fastp bwa samtools bedtools
+sudo yum install fastp bwa samtools bedtools ucsc-bedgraphtobigwig
 
 # 또는 conda 사용
-conda install -c bioconda fastp bwa samtools bedtools
+conda install -c bioconda fastp bwa samtools bedtools ucsc-bedgraphtobigwig
 ```
 
 ## 사용법
+
+### 빠른 시작 (다른 서버에서)
+
+```bash
+# 1. 환경 검사
+python check_environment.py
+
+# 2. Python 환경 설정 (필요시)
+python -m venv venv
+source venv/bin/activate
+pip install -r requirements.txt
+
+# 3. 생물정보학 도구 설치 (필요시)
+chmod +x install_dependencies.sh
+./install_dependencies.sh
+
+# 4. 실행
+python main.py
+```
 
 ### 기본 실행
 
@@ -100,9 +137,9 @@ python main.py \
 
 ### 매개변수
 
-- `--reads-dir`: FASTQ 파일들이 있는 디렉토리 (기본값: `../data/reads`)
-- `--reference-genome`: 참조 게놈 FASTA 파일 (기본값: `../data/ref_sequence_genB.fa`)
-- `--reference-index`: 참조 게놈 인덱스 파일 (기본값: `../data/ref_sequence_genB.fa.fai`)
+- `--reads-dir`: FASTQ 파일들이 있는 디렉토리 (기본값: `data/reads`)
+- `--reference-genome`: 참조 게놈 FASTA 파일 (기본값: `data/ref_sequence_genB.fa`)
+- `--reference-index`: 참조 게놈 인덱스 파일 (기본값: `data/ref_sequence_genB.fa.fai`)
 - `--spark-master`: Spark 마스터 URL (기본값: `local[*]`)
 
 ## 입력 데이터 형식
@@ -128,10 +165,9 @@ results/spark_pipeline/
 ├── *_filtered.bam              # 정렬된 BAM 파일
 ├── *_mapping_stats.txt         # 매핑 통계
 ├── *_coverage.bed              # 커버리지 BED 파일
-├── *.bw                        # BigWig 파일 (선택사항)
+├── *.bw                        # BigWig 파일 (subprocess로 생성)
 ├── pipeline_results.json       # 전체 파이프라인 결과
 ├── pipeline_summary.json       # 요약 보고서
-├── coverage_analysis_plots.png # 커버리지 분석 플롯
 └── pipeline.log                # 실행 로그
 ```
 
@@ -143,8 +179,14 @@ results/spark_pipeline/
 #### pipeline_summary.json
 각 단계별 성공/실패 통계와 실행 시간 요약
 
-#### coverage_analysis_plots.png
-커버리지 분석 결과를 시각화한 플롯
+#### coverage_summary.json
+커버리지 계산 결과 요약 보고서
+
+#### *.bw (BigWig 파일)
+게놈 커버리지를 시각화할 수 있는 BigWig 형식 파일
+- bedGraphToBigWig 도구를 사용하여 BED 파일에서 생성
+- IGV, UCSC Genome Browser 등에서 시각화 가능
+- 각 샘플별로 개별 BigWig 파일 생성
 
 ## 설정
 
