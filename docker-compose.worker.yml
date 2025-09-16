@@ -1,0 +1,16 @@
+version: "3.8"
+services:
+  spark-worker:
+    image: spark-bio:latest
+    container_name: spark-worker
+    network_mode: host
+    restart: unless-stopped
+    volumes:
+      - /mnt/genome:/mnt/genome
+      - /vol/fob-vol7/mi21/kimhongs/spark-genome-pipeline:/workspace/pipeline
+    environment:
+      - SPARK_NO_DAEMONIZE=true
+    command: >
+      bash -lc "start-worker.sh ${SPARK_MASTER_URL:-spark://hongsik1.vm.informatik.hu-berlin.de:7077} --cores ${WORKER_CORES:-6} --memory ${WORKER_MEMORY:-4G} && tail -f /dev/null"
+
+

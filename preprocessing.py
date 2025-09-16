@@ -44,7 +44,7 @@ def run_fastp_udf(sample_id: str, r1_file: str, r2_file: str) -> dict:
             "--detect_adapter_for_pe",
             "--json", str(report_json),
             "--html", str(report_html),
-            "--thread", "1"  # 단일 스레드로 실행 (Spark에서 병렬 처리)
+            "--thread", "16"  # 16개 스레드로 실행 (genCov와 동일)
         ]
         
         result = run_command(cmd, check=False)

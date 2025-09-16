@@ -54,7 +54,7 @@ def run_bwa_mem_udf(sample_id: str, r1_file: str, r2_file: str, reference_genome
         # BWA mem 명령어 실행
         cmd = [
             Config.BWA_PATH, "mem",
-            "-t", "1",  # 단일 스레드로 실행 (Spark에서 병렬 처리)
+            "-t", "16",  # 16개 스레드 사용 (72코어 중 일부)
             reference_genome,
             r1_file,
             r2_file

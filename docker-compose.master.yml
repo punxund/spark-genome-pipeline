@@ -1,0 +1,16 @@
+version: "3.8"
+services:
+  spark-master:
+    build: .
+    image: spark-bio:latest
+    container_name: spark-master
+    network_mode: host
+    restart: unless-stopped
+    volumes:
+      - /mnt/genome:/mnt/genome
+      - /vol/fob-vol7/mi21/kimhongs/spark-genome-pipeline:/workspace/pipeline
+    environment:
+      - SPARK_NO_DAEMONIZE=true
+    command: bash -lc "start-master.sh && tail -f /dev/null"
+
+

@@ -1,0 +1,33 @@
+# Spark 유전체 분석 파이프라인 - Hybrid 버전 요구사항
+# Python 라이브러리 기반 도구들
+
+# 핵심 Python 라이브러리들
+pysam>=0.21.0          # SAM/BAM 파일 처리
+pybedtools>=0.9.0      # BED 파일 처리 및 커버리지 계산
+pybigwig>=0.3.18       # BigWig 파일 생성/읽기
+
+# 기존 Spark 및 데이터 처리 라이브러리들
+pyspark>=3.4.0         # Apache Spark Python API
+pandas>=1.5.0          # 데이터 분석 및 처리
+numpy>=1.24.0          # 수치 계산
+
+# 유틸리티 라이브러리들
+pathlib2>=2.3.7        # 경로 처리 (Python 3.4 미만용)
+typing-extensions>=4.5.0  # 타입 힌트 확장
+
+# 선택적 라이브러리들 (성능 향상을 위해)
+numba>=0.57.0          # JIT 컴파일러 (선택적)
+cython>=3.0.0          # C 확장 (선택적)
+
+# 개발 및 테스트용 (선택적)
+pytest>=7.0.0          # 테스트 프레임워크
+black>=23.0.0          # 코드 포맷터
+flake8>=6.0.0          # 코드 린터
+
+
+
+
+
+
+
+
