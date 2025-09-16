@@ -11,6 +11,6 @@ services:
     environment:
       - SPARK_NO_DAEMONIZE=true
     command: >
-      bash -lc "start-worker.sh ${SPARK_MASTER_URL:-spark://hongsik1.vm.informatik.hu-berlin.de:7077} --cores ${WORKER_CORES:-6} --memory ${WORKER_MEMORY:-4G} && tail -f /dev/null"
+      bash -lc "start-worker.sh ${SPARK_MASTER_URL:-spark://141.20.38.81:7077} --cores ${WORKER_CORES:-6} --memory ${WORKER_MEMORY:-4G} && tail -f /dev/null"
 
 

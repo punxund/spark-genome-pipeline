@@ -11,6 +11,10 @@ services:
       - /vol/fob-vol7/mi21/kimhongs/spark-genome-pipeline:/workspace/pipeline
     environment:
       - SPARK_NO_DAEMONIZE=true
-    command: bash -lc "start-master.sh && tail -f /dev/null"
+      - SPARK_MASTER_HOST=141.20.38.81
+      - SPARK_MASTER_PORT=7077
+      - SPARK_MASTER_WEBUI_PORT=8080
+    command: >
+      bash -lc "start-master.sh -h ${SPARK_MASTER_HOST} -p ${SPARK_MASTER_PORT} --webui-port ${SPARK_MASTER_WEBUI_PORT} && tail -f /dev/null"
 
 
