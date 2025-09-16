@@ -14,7 +14,8 @@ services:
       - SPARK_MASTER_HOST=141.20.38.81
       - SPARK_MASTER_PORT=7077
       - SPARK_MASTER_WEBUI_PORT=8080
+      - SPARK_LOCAL_IP=141.20.38.81
     command: >
-      bash -lc "start-master.sh -h ${SPARK_MASTER_HOST} -p ${SPARK_MASTER_PORT} --webui-port ${SPARK_MASTER_WEBUI_PORT} && tail -f /dev/null"
+      bash -lc "start-master.sh & sleep 2; tail -F /opt/spark/logs/*master*.out"
 
 
