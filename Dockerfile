@@ -20,7 +20,7 @@ RUN python3 -m pip install --no-cache-dir --upgrade pip \
     pysam pybedtools pybigwig pyarrow pandas
 
 # Install Apache Hadoop
-ARG HADOOP_VERSION=3.4.2
+ARG HADOOP_VERSION=3.3.1
 RUN curl -fsSL https://archive.apache.org/dist/hadoop/common/hadoop-${HADOOP_VERSION}/hadoop-${HADOOP_VERSION}.tar.gz \
   | tar -xz -C /opt \
  && ln -s /opt/hadoop-${HADOOP_VERSION} /opt/hadoop
