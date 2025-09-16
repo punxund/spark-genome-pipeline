@@ -19,11 +19,12 @@ RUN python3 -m pip install --no-cache-dir --upgrade pip \
  && python3 -m pip install --no-cache-dir \
     pysam pybedtools pybigwig pyarrow pandas
 
-# Install Apache Hadoop
+# Install Apache Hadoop (using pre-downloaded file)
 ARG HADOOP_VERSION=3.3.1
-RUN curl -fsSL https://archive.apache.org/dist/hadoop/common/hadoop-${HADOOP_VERSION}/hadoop-${HADOOP_VERSION}.tar.gz \
-  | tar -xz -C /opt \
- && ln -s /opt/hadoop-${HADOOP_VERSION} /opt/hadoop
+COPY hadoop-${HADOOP_VERSION}.tar.gz /tmp/
+RUN tar -xz -C /opt -f /tmp/hadoop-${HADOOP_VERSION}.tar.gz \
+ && ln -s /opt/hadoop-${HADOOP_VERSION} /opt/hadoop \
+ && rm /tmp/hadoop-${HADOOP_VERSION}.tar.gz
 
 # Install Apache Spark (binary distribution)
 # Use Spark 4.0.2 with the hadoop3 classifier (works with Hadoop 3.4.x clients)
