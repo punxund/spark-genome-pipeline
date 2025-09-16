@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<configuration>
+    <!-- 블록 크기 설정 (128MB) -->
+    <property>
+        <name>dfs.blocksize</name>
+        <value>134217728</value>
+    </property>
+    
+    <!-- 복제본 수 -->
+    <property>
+        <name>dfs.replication</name>
+        <value>1</value>
+    </property>
+    
+    <!-- NameNode 데이터 디렉토리 -->
+    <property>
+        <name>dfs.namenode.name.dir</name>
+        <value>/opt/hadoop/data/namenode</value>
+    </property>
+    
+    <!-- DataNode 데이터 디렉토리 -->
+    <property>
+        <name>dfs.datanode.data.dir</name>
+        <value>/opt/hadoop/data/datanode</value>
+    </property>
+    
+    <!-- NameNode HTTP 주소 -->
+    <property>
+        <name>dfs.namenode.http-address</name>
+        <value>hongsik1.vm.informatik.hu-berlin.de:9870</value>
+    </property>
+    
+    <!-- Secondary NameNode HTTP 주소 -->
+    <property>
+        <name>dfs.namenode.secondary.http-address</name>
+        <value>hongsik1.vm.informatik.hu-berlin.de:9868</value>
+    </property>
+    
+    <!-- 최소 블록 크기 -->
+    <property>
+        <name>dfs.namenode.fs-limits.min-block-size</name>
+        <value>1048576</value>
+    </property>
+    
+    <!-- 최대 블록 크기 -->
+    <property>
+        <name>dfs.namenode.fs-limits.max-blocks-per-file</name>
+        <value>1048576</value>
+    </property>
+</configuration>

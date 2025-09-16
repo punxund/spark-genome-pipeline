@@ -31,20 +31,20 @@ from alignment import run_alignment
 from pythontools.hybrid_sam_processing import run_sam_processing
 from pythontools.hybrid_coverage import run_coverage_calculation
 
-# 임시 디렉토리 설정
-os.environ['TMPDIR'] = str(Config.TEMP_DIR.absolute())
-os.environ['TEMP'] = str(Config.TEMP_DIR.absolute())
-os.environ['TMP'] = str(Config.TEMP_DIR.absolute())
+# 임시 디렉토리 설정 (로컬)
+os.environ['TMPDIR'] = str(Config.LOCAL_DATA_DIR / "temp")
+os.environ['TEMP'] = str(Config.LOCAL_DATA_DIR / "temp")
+os.environ['TMP'] = str(Config.LOCAL_DATA_DIR / "temp")
 
-# 필요한 디렉토리 생성
-Config.create_directories()
+# 필요한 디렉토리 생성 (로컬)
+(Config.LOCAL_DATA_DIR / "temp").mkdir(parents=True, exist_ok=True)
 
-# 로깅 설정
+# 로깅 설정 (로컬)
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     handlers=[
-        logging.FileHandler(Config.RESULTS_DIR / "pipeline.log"),
+        logging.FileHandler(Config.LOCAL_DATA_DIR / "temp" / "pipeline.log"),
         logging.StreamHandler(sys.stdout)
     ]
 )
@@ -115,9 +115,13 @@ class HybridGenomeAnalysisPipeline:
     def _check_input_files(self, reads_dir: Path = None) -> list:
         """입력 파일들을 확인합니다."""
         if reads_dir is None:
-            reads_dir = Config.READS_DIR
+            reads_dir = Config.HDFS_READS_DIR
         
-        if not reads_dir.exists():
+        # HDFS 경로는 문자열이므로 exists() 체크를 다르게 처리
+        if isinstance(reads_dir, str) and reads_dir.startswith("hdfs://"):
+            # HDFS 경로는 나중에 Spark에서 체크
+            pass
+        elif not Path(reads_dir).exists():
             raise FileNotFoundError(f"읽기 파일 디렉토리를 찾을 수 없습니다: {reads_dir}")
         
         # FASTQ 파일 쌍 파싱
@@ -169,7 +173,7 @@ class HybridGenomeAnalysisPipeline:
             preprocessed_df = run_preprocessing(self.spark, reads_dir)
             
             # 전처리 결과를 파일로 저장
-            preprocessed_file = Config.RESULTS_DIR / "preprocessed_results.parquet"
+            preprocessed_file = Config.HDFS_RESULTS_DIR + "/preprocessed_results.parquet"
             preprocessed_df.write.mode("overwrite").parquet(str(preprocessed_file))
             logger.info(f"전처리 결과 저장: {preprocessed_file}")
             
@@ -202,7 +206,7 @@ class HybridGenomeAnalysisPipeline:
             alignment_df = run_alignment(self.spark, preprocessed_df, reference_genome)
             
             # 매핑 결과를 파일로 저장
-            alignment_file = Config.RESULTS_DIR / "alignment_results.parquet"
+            alignment_file = Config.HDFS_RESULTS_DIR + "/alignment_results.parquet"
             alignment_df.write.mode("overwrite").parquet(str(alignment_file))
             logger.info(f"매핑 결과 저장: {alignment_file}")
             
@@ -237,7 +241,7 @@ class HybridGenomeAnalysisPipeline:
             sam_processed_df = run_sam_processing(self.spark, alignment_df)
             
             # SAM 처리 결과를 파일로 저장
-            sam_processed_file = Config.RESULTS_DIR / "sam_processed_results.parquet"
+            sam_processed_file = Config.HDFS_RESULTS_DIR + "/sam_processed_results.parquet"
             sam_processed_df.write.mode("overwrite").parquet(str(sam_processed_file))
             logger.info(f"SAM 처리 결과 저장: {sam_processed_file}")
             
@@ -272,7 +276,7 @@ class HybridGenomeAnalysisPipeline:
             coverage_df = run_coverage_calculation(self.spark, sam_processed_df, reference_index)
             
             # 커버리지 결과를 파일로 저장
-            coverage_file = Config.RESULTS_DIR / "coverage_results.parquet"
+            coverage_file = Config.HDFS_RESULTS_DIR + "/coverage_results.parquet"
             coverage_df.write.mode("overwrite").parquet(str(coverage_file))
             logger.info(f"커버리지 결과 저장: {coverage_file}")
             
@@ -329,7 +333,7 @@ class HybridGenomeAnalysisPipeline:
             return
         
         # 결과 파일 저장
-        results_file = Config.RESULTS_DIR / "pipeline_results.json"
+        results_file = Config.LOCAL_DATA_DIR / "temp" / "pipeline_results.json"
         with open(results_file, 'w') as f:
             json.dump(self.results, f, indent=2)
         
@@ -364,7 +368,7 @@ class HybridGenomeAnalysisPipeline:
                 }
         
         # 요약 보고서 저장
-        summary_file = Config.RESULTS_DIR / "pipeline_summary.json"
+        summary_file = Config.LOCAL_DATA_DIR / "temp" / "pipeline_summary.json"
         with open(summary_file, 'w') as f:
             json.dump(summary, f, indent=2)
         

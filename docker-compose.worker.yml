@@ -8,6 +8,7 @@ services:
     volumes:
       - /mnt/genome:/mnt/genome
       - /vol/fob-vol7/mi21/kimhongs/spark-genome-pipeline:/workspace/pipeline
+      - ./hadoop-config:/opt/hadoop/etc/hadoop
     environment:
       - SPARK_NO_DAEMONIZE=true
     command: >

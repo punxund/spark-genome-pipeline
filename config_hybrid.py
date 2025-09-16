@@ -2,21 +2,27 @@ import os
 from pathlib import Path
 
 class HybridConfig:
-    # 데이터 경로
-    DATA_DIR = Path("data")
-    READS_DIR = DATA_DIR / "reads"
-    REFERENCE_GENOME = DATA_DIR / "ref_sequence_genB.fa"
-    REFERENCE_INDEX = DATA_DIR / "ref_sequence_genB.fa.fai"
+    # HDFS 경로 설정
+    HDFS_BASE = "hdfs://hongsik1.vm.informatik.hu-berlin.de:9000"
     
-    # PyTools 호환성을 위한 별칭
-    REFERENCE_INDEX = DATA_DIR / "ref_sequence_genB.fa.fai"
+    # 데이터 경로 (HDFS)
+    HDFS_DATA_DIR = f"{HDFS_BASE}/genome"
+    HDFS_READS_DIR = f"{HDFS_DATA_DIR}/reads"
+    HDFS_REFERENCE_GENOME = f"{HDFS_DATA_DIR}/ref_sequence_genB.fa"
+    HDFS_REFERENCE_INDEX = f"{HDFS_DATA_DIR}/ref_sequence_genB.fa.fai"
     
-    # 결과 저장 경로 (Hybrid 전용)
-    RESULTS_DIR = Path("results/hybrid_pipeline")
-    TEMP_DIR = Path("temp")  # 로컬 temp 폴더 사용
+    # 로컬 경로 (참조용)
+    LOCAL_DATA_DIR = Path("data")
+    LOCAL_READS_DIR = LOCAL_DATA_DIR / "reads"
+    LOCAL_REFERENCE_GENOME = LOCAL_DATA_DIR / "ref_sequence_genB.fa"
+    LOCAL_REFERENCE_INDEX = LOCAL_DATA_DIR / "ref_sequence_genB.fa.fai"
     
-    # Spark 설정
-    SPARK_MASTER = "local[*]"
+    # 결과 저장 경로 (HDFS)
+    HDFS_RESULTS_DIR = f"{HDFS_DATA_DIR}/results/hybrid_pipeline"
+    HDFS_TEMP_DIR = f"{HDFS_DATA_DIR}/temp"
+    
+    # Spark 설정 (클러스터 모드)
+    SPARK_MASTER = "spark://141.20.38.81:7077"
     SPARK_APP_NAME = "HybridGenomeAnalysisPipeline"
     
     # 도구 경로 (시스템에 설치된 도구들)

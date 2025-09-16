@@ -19,15 +19,24 @@ RUN python3 -m pip install --no-cache-dir --upgrade pip \
  && python3 -m pip install --no-cache-dir \
     pysam pybedtools pybigwig pyarrow pandas
 
-# Install Apache Spark (binary distribution)
-ARG SPARK_VERSION=3.5.1
-ARG HADOOP_VERSION=3
-RUN curl -fsSL https://archive.apache.org/dist/spark/spark-${SPARK_VERSION}/spark-${SPARK_VERSION}-bin-hadoop${HADOOP_VERSION}.tgz \
+# Install Apache Hadoop
+ARG HADOOP_VERSION=3.4.2
+RUN curl -fsSL https://archive.apache.org/dist/hadoop/common/hadoop-${HADOOP_VERSION}/hadoop-${HADOOP_VERSION}.tar.gz \
   | tar -xz -C /opt \
- && ln -s /opt/spark-${SPARK_VERSION}-bin-hadoop${HADOOP_VERSION} /opt/spark
+ && ln -s /opt/hadoop-${HADOOP_VERSION} /opt/hadoop
 
+# Install Apache Spark (binary distribution)
+# Use Spark 4.0.2 with the hadoop3 classifier (works with Hadoop 3.4.x clients)
+ARG SPARK_VERSION=4.0.2
+ARG HADOOP_CLASSIFIER=3
+RUN curl -fsSL https://archive.apache.org/dist/spark/spark-${SPARK_VERSION}/spark-${SPARK_VERSION}-bin-hadoop${HADOOP_CLASSIFIER}.tgz \
+  | tar -xz -C /opt \
+ && ln -s /opt/spark-${SPARK_VERSION}-bin-hadoop${HADOOP_CLASSIFIER} /opt/spark
+
+ENV HADOOP_HOME=/opt/hadoop
+ENV HADOOP_CONF_DIR=/opt/hadoop/etc/hadoop
 ENV SPARK_HOME=/opt/spark
-ENV PATH=$SPARK_HOME/bin:$SPARK_HOME/sbin:$PATH
+ENV PATH=$HADOOP_HOME/bin:$HADOOP_HOME/sbin:$SPARK_HOME/bin:$SPARK_HOME/sbin:$PATH
 
 WORKDIR /workspace
 
