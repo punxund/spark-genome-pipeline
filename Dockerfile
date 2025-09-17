@@ -26,13 +26,14 @@ RUN tar -xz -C /opt -f /tmp/hadoop-${HADOOP_VERSION}.tar.gz \
  && ln -s /opt/hadoop-${HADOOP_VERSION} /opt/hadoop \
  && rm /tmp/hadoop-${HADOOP_VERSION}.tar.gz
 
-# Install Apache Spark (binary distribution)
-# Use Spark 4.0.2 with the hadoop3 classifier (works with Hadoop 3.4.x clients)
-ARG SPARK_VERSION=4.0.2
+# Install Apache Spark (using pre-downloaded file)
+# Use Spark 3.5.1 with the hadoop3 classifier (works with Hadoop 3.x clients)
+ARG SPARK_VERSION=3.5.1
 ARG HADOOP_CLASSIFIER=3
-RUN curl -fsSL https://archive.apache.org/dist/spark/spark-${SPARK_VERSION}/spark-${SPARK_VERSION}-bin-hadoop${HADOOP_CLASSIFIER}.tgz \
-  | tar -xz -C /opt \
- && ln -s /opt/spark-${SPARK_VERSION}-bin-hadoop${HADOOP_CLASSIFIER} /opt/spark
+COPY spark-${SPARK_VERSION}-bin-hadoop${HADOOP_CLASSIFIER}.tgz /tmp/
+RUN tar -xz -C /opt -f /tmp/spark-${SPARK_VERSION}-bin-hadoop${HADOOP_CLASSIFIER}.tgz \
+ && ln -s /opt/spark-${SPARK_VERSION}-bin-hadoop${HADOOP_CLASSIFIER} /opt/spark \
+ && rm /tmp/spark-${SPARK_VERSION}-bin-hadoop${HADOOP_CLASSIFIER}.tgz
 
 ENV HADOOP_HOME=/opt/hadoop
 ENV HADOOP_CONF_DIR=/opt/hadoop/etc/hadoop
