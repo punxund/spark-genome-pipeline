@@ -44,6 +44,9 @@ ENV HDFS_DATANODE_USER=root
 ENV HDFS_SECONDARYNAMENODE_USER=root
 ENV PATH=$JAVA_HOME/bin:$HADOOP_HOME/bin:$HADOOP_HOME/sbin:$SPARK_HOME/bin:$SPARK_HOME/sbin:$PATH
 
+# Configure Hadoop to use the correct JAVA_HOME
+RUN echo "export JAVA_HOME=/usr/lib/jvm/java-11-openjdk-amd64" >> /opt/hadoop/etc/hadoop/hadoop-env.sh
+
 WORKDIR /workspace
 
 # Default command does nothing; actual role defined by docker-compose
