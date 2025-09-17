@@ -35,10 +35,13 @@ RUN tar -xz -C /opt -f /tmp/spark-${SPARK_VERSION}-bin-hadoop${HADOOP_CLASSIFIER
  && ln -s /opt/spark-${SPARK_VERSION}-bin-hadoop${HADOOP_CLASSIFIER} /opt/spark \
  && rm /tmp/spark-${SPARK_VERSION}-bin-hadoop${HADOOP_CLASSIFIER}.tgz
 
+ENV JAVA_HOME=/usr/lib/jvm/java-11-openjdk-amd64
 ENV HADOOP_HOME=/opt/hadoop
 ENV HADOOP_CONF_DIR=/opt/hadoop/etc/hadoop
 ENV SPARK_HOME=/opt/spark
-ENV JAVA_HOME=/usr/lib/jvm/java-11-openjdk-amd64
+ENV HDFS_NAMENODE_USER=root
+ENV HDFS_DATANODE_USER=root
+ENV HDFS_SECONDARYNAMENODE_USER=root
 ENV PATH=$JAVA_HOME/bin:$HADOOP_HOME/bin:$HADOOP_HOME/sbin:$SPARK_HOME/bin:$SPARK_HOME/sbin:$PATH
 
 WORKDIR /workspace
