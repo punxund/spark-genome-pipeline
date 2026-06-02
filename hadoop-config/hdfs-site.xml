@@ -24,17 +24,23 @@
         <value>/opt/hadoop/data/datanode</value>
     </property>
     
-    <!-- NameNode HTTP 주소 -->
+    <!-- NameNode HTTP 주소 (컨테이너 내부에서 모든 인터페이스 바인딩) -->
     <property>
         <name>dfs.namenode.http-address</name>
-        <value>hongsik1.vm.informatik.hu-berlin.de:9870</value>
+        <value>0.0.0.0:9870</value>
+    </property>
+
+    <!-- RPC: 클라이언트/데이터노드는 fs.defaultFS(FQDN:9000)로 접속; 컨테이너 안에서는 0.0.0.0에 바인드 (BindException 방지) -->
+    <property>
+        <name>dfs.namenode.rpc-address</name>
+        <value>hongsik1.vm.informatik.hu-berlin.de:9000</value>
+    </property>
+    <property>
+        <name>dfs.namenode.rpc-bind-host</name>
+        <value>0.0.0.0</value>
     </property>
     
-    <!-- Secondary NameNode HTTP 주소 -->
-    <property>
-        <name>dfs.namenode.secondary.http-address</name>
-        <value>hongsik1.vm.informatik.hu-berlin.de:9868</value>
-    </property>
+    <!-- Secondary NameNode HTTP 주소 (필요 시 변경 가능, 현재는 기본값 사용) -->
     
     <!-- 최소 블록 크기 -->
     <property>

@@ -36,6 +36,7 @@ def run_samtools_udf(sample_id: str, sam_file: str) -> dict:
         # 1. SAM을 BAM으로 변환하고 정렬
         sort_cmd = [
             Config.SAMTOOLS_PATH, "sort",
+            "-@", "8",  # 8개 스레드 사용
             "-o", str(sorted_bam),
             sam_file
         ]

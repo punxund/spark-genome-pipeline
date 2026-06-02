@@ -1,0 +1,7 @@
+hadoop-data/
+hadoop-logs/
+*.log
+*.out
+
+
+

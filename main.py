@@ -12,17 +12,20 @@ Spark 유전체 분석 파이프라인 메인 실행 파일
 import sys
 import time
 import logging
+import os
 from pathlib import Path
 from datetime import datetime
 import json
 import argparse
+from typing import Optional, Union
 
 from pyspark.sql import SparkSession
 from pyspark.sql.functions import col
 
 # 프로젝트 모듈들 import
 from config import Config
-from utils import check_tool_availability, parse_fastq_pairs
+from utils import check_tool_availability, get_fastq_pairs_for_pipeline
+from hdfs_path_utils import is_hdfs_uri
 from preprocessing import run_preprocessing
 from alignment import run_alignment
 from sam_processing import run_sam_processing
@@ -41,6 +44,12 @@ logging.basicConfig(
     ]
 )
 logger = logging.getLogger(__name__)
+
+
+def _local_parquet_uri(subpath: str) -> str:
+    """로컬 결과 경로를 file:// 로 고정(Spark 기본 FS가 HDFS일 때 상대 경로가 HDFS로 잡히는 것을 방지)."""
+    return (Config.RESULTS_DIR / subpath).resolve().as_uri()
+
 
 class GenomeAnalysisPipeline:
     """Spark 유전체 분석 파이프라인 클래스"""
@@ -65,7 +74,8 @@ class GenomeAnalysisPipeline:
             "fastp": Config.FASTP_PATH,
             "bwa": Config.BWA_PATH,
             "samtools": Config.SAMTOOLS_PATH,
-            "bedtools": Config.BEDTOOLS_PATH
+            "bedtools": Config.BEDTOOLS_PATH,
+            "bedGraphToBigWig": Config.BIGWIG_PATH
         }
         
         missing_tools = []
@@ -80,35 +90,43 @@ class GenomeAnalysisPipeline:
         
         logger.info("모든 의존성 도구가 사용 가능합니다.")
     
-    def _check_input_files(self, reads_dir: Path = None) -> list:
-        """입력 파일들을 확인합니다."""
-        if reads_dir is None:
-            reads_dir = Config.READS_DIR
+    def _check_input_files(
+        self, reads_dir: Optional[Union[Path, str]] = None
+    ) -> list:
+        """입력 파일들을 확인합니다. 읽기 디렉터리는 로컬 Path 또는 HDFS( hdfs://... )."""
+        rdir = reads_dir if reads_dir is not None else Config.READS_DIR
+        is_hdfs = isinstance(rdir, str) and is_hdfs_uri(rdir)
+        if not is_hdfs:
+            p = Path(rdir) if not isinstance(rdir, Path) else rdir
+            if not p.exists():
+                raise FileNotFoundError(f"읽기 파일 디렉토리를 찾을 수 없습니다: {p}")
         
-        if not reads_dir.exists():
-            raise FileNotFoundError(f"읽기 파일 디렉토리를 찾을 수 없습니다: {reads_dir}")
-        
-        # FASTQ 파일 쌍 파싱
-        fastq_pairs = parse_fastq_pairs(reads_dir)
+        fastq_pairs = get_fastq_pairs_for_pipeline(reads_dir)
         
         if not fastq_pairs:
-            raise ValueError(f"FASTQ 파일 쌍을 찾을 수 없습니다: {reads_dir}")
+            raise ValueError(f"FASTQ 파일 쌍을 찾을 수 없습니다: {rdir}")
         
         logger.info(f"처리할 FASTQ 파일 쌍: {len(fastq_pairs)}개")
         for sample_id, r1_file, r2_file in fastq_pairs:
-            logger.info(f"  - {sample_id}: {r1_file.name}, {r2_file.name}")
+            b1 = Path(r1_file).name if not is_hdfs_uri(str(r1_file)) else r1_file.rsplit("/", 1)[-1]
+            b2 = Path(r2_file).name if not is_hdfs_uri(str(r2_file)) else r2_file.rsplit("/", 1)[-1]
+            logger.info(f"  - {sample_id}: {b1}, {b2}")
         
         return fastq_pairs
     
-    def run_pipeline(self, reads_dir: Path = None, reference_genome: Path = None, 
-                    reference_index: Path = None) -> dict:
+    def run_pipeline(
+        self,
+        reads_dir: Optional[Union[Path, str]] = None,
+        reference_genome: Optional[Union[Path, str]] = None,
+        reference_index: Optional[Union[Path, str]] = None,
+    ) -> dict:
         """
         전체 파이프라인을 실행합니다.
         
         Args:
-            reads_dir: 읽기 파일 디렉토리
-            reference_genome: 참조 게놈 파일
-            reference_index: 참조 인덱스 파일
+            reads_dir: 읽기 디렉터리 (로컬 Path 또는 HDFS)
+            reference_genome: 참조 FASTA (로컬 Path 또는 HDFS; 기본: Config.REFERENCE_GENOME)
+            reference_index: 참조 .fai (로컬 Path 또는 HDFS; 기본: Config.REFERENCE_INDEX)
         
         Returns:
             파이프라인 실행 결과
@@ -131,8 +149,8 @@ class GenomeAnalysisPipeline:
             preprocessed_df = run_preprocessing(self.spark, reads_dir)
             
             # 전처리 결과를 파일로 저장
-            preprocessed_file = Config.RESULTS_DIR / "preprocessed_results.parquet"
-            preprocessed_df.write.mode("overwrite").parquet(str(preprocessed_file))
+            preprocessed_file = _local_parquet_uri("preprocessed_results.parquet")
+            preprocessed_df.write.mode("overwrite").parquet(preprocessed_file)
             logger.info(f"전처리 결과 저장: {preprocessed_file}")
             
             step1_time = time.time() - step1_start
@@ -160,12 +178,12 @@ class GenomeAnalysisPipeline:
             
             step2_start = time.time()
             # 저장된 전처리 결과를 읽어옴
-            preprocessed_df = self.spark.read.parquet(str(preprocessed_file))
+            preprocessed_df = self.spark.read.parquet(preprocessed_file)
             alignment_df = run_alignment(self.spark, preprocessed_df, reference_genome)
             
             # 매핑 결과를 파일로 저장
-            alignment_file = Config.RESULTS_DIR / "alignment_results.parquet"
-            alignment_df.write.mode("overwrite").parquet(str(alignment_file))
+            alignment_file = _local_parquet_uri("alignment_results.parquet")
+            alignment_df.write.mode("overwrite").parquet(alignment_file)
             logger.info(f"매핑 결과 저장: {alignment_file}")
             
             step2_time = time.time() - step2_start
@@ -193,12 +211,12 @@ class GenomeAnalysisPipeline:
             
             step3_start = time.time()
             # 저장된 매핑 결과를 읽어옴
-            alignment_df = self.spark.read.parquet(str(alignment_file))
+            alignment_df = self.spark.read.parquet(alignment_file)
             sam_processed_df = run_sam_processing(self.spark, alignment_df)
             
             # SAM 처리 결과를 파일로 저장
-            sam_processed_file = Config.RESULTS_DIR / "sam_processed_results.parquet"
-            sam_processed_df.write.mode("overwrite").parquet(str(sam_processed_file))
+            sam_processed_file = _local_parquet_uri("sam_processed_results.parquet")
+            sam_processed_df.write.mode("overwrite").parquet(sam_processed_file)
             logger.info(f"SAM 처리 결과 저장: {sam_processed_file}")
             
             step3_time = time.time() - step3_start
@@ -226,12 +244,12 @@ class GenomeAnalysisPipeline:
             
             step4_start = time.time()
             # 저장된 SAM 처리 결과를 읽어옴
-            sam_processed_df = self.spark.read.parquet(str(sam_processed_file))
+            sam_processed_df = self.spark.read.parquet(sam_processed_file)
             coverage_df = run_coverage_calculation(self.spark, sam_processed_df, reference_index)
             
             # 커버리지 결과를 파일로 저장
-            coverage_file = Config.RESULTS_DIR / "coverage_results.parquet"
-            coverage_df.write.mode("overwrite").parquet(str(coverage_file))
+            coverage_file = _local_parquet_uri("coverage_results.parquet")
+            coverage_df.write.mode("overwrite").parquet(coverage_file)
             logger.info(f"커버리지 결과 저장: {coverage_file}")
             
             step4_time = time.time() - step4_start
@@ -340,6 +358,21 @@ def create_spark_session() -> SparkSession:
     logger.info(f"Spark 세션 생성: {spark.sparkContext.applicationId}")
     return spark
 
+
+def _as_pipeline_path(
+    s: Optional[Union[Path, str]], fallback: Optional[Union[Path, str]] = None
+) -> Optional[Union[Path, str]]:
+    """HDFS URI는 str로 유지하고, 그 외는 Path로 맞춘다."""
+    v = s if s is not None else fallback
+    if v is None:
+        return None
+    if isinstance(v, str) and is_hdfs_uri(v):
+        return v
+    if isinstance(v, Path):
+        return v
+    return Path(v)
+
+
 def main():
     """메인 함수"""
     parser = argparse.ArgumentParser(description="Spark 유전체 분석 파이프라인")
@@ -353,6 +386,9 @@ def main():
     # Spark 마스터 설정 업데이트
     if args.spark_master:
         Config.SPARK_MASTER = args.spark_master
+
+    if os.environ.get("SPARK_MAIN_SPARK_MASTER"):
+        Config.SPARK_MASTER = os.environ["SPARK_MAIN_SPARK_MASTER"]
     
     # Spark 세션 생성
     spark = create_spark_session()
@@ -361,11 +397,24 @@ def main():
         # 파이프라인 실행
         pipeline = GenomeAnalysisPipeline(spark)
         
-        reads_dir = Path(args.reads_dir) if args.reads_dir else None
-        reference_genome = Path(args.reference_genome) if args.reference_genome else None
-        reference_index = Path(args.reference_index) if args.reference_index else None
+        reads_dir: Optional[Union[Path, str]] = None
+        if args.reads_dir:
+            reads_dir = args.reads_dir
+        elif Config.MAIN_PIPELINE_HDFS_READS:
+            reads_dir = Config.MAIN_PIPELINE_HDFS_READS
+        if reads_dir is not None and not (isinstance(reads_dir, str) and is_hdfs_uri(reads_dir)):
+            reads_dir = Path(reads_dir)
         
-        results = pipeline.run_pipeline(reads_dir, reference_genome, reference_index)
+        ref_g = args.reference_genome
+        if not ref_g and Config.MAIN_PIPELINE_HDFS_REF:
+            ref_g = Config.MAIN_PIPELINE_HDFS_REF
+        ref_g = _as_pipeline_path(ref_g, None)
+        ref_i = args.reference_index
+        if not ref_i and Config.MAIN_PIPELINE_HDFS_FAI:
+            ref_i = Config.MAIN_PIPELINE_HDFS_FAI
+        ref_i = _as_pipeline_path(ref_i, None)
+        
+        results = pipeline.run_pipeline(reads_dir, ref_g, ref_i)
         
         # 결과 저장
         pipeline.save_results()

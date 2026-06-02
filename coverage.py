@@ -3,7 +3,7 @@ from pyspark.sql.functions import udf, col, lit
 from pyspark.sql.types import StructType, StructField, StringType, DoubleType, MapType
 import logging
 from pathlib import Path
-from typing import List, Tuple, Optional
+from typing import List, Tuple, Optional, Union
 import tempfile
 import shutil
 import os
@@ -12,22 +12,26 @@ import pandas as pd
 
 from config import Config
 from utils import run_command, check_tool_availability, create_temp_file, cleanup_temp_files
+from hdfs_path_utils import is_hdfs_uri, local_scratch, download_if_hdfs, hdfs_file_size
 
 logger = logging.getLogger(__name__)
 
-def run_coverage_udf(sample_id: str, bam_file: str) -> dict:
+def run_coverage_udf(sample_id: str, bam_file: str, reference_index: str) -> dict:
     """
     커버리지 계산을 실행하는 UDF 함수
     
     Args:
         sample_id: 샘플 ID
         bam_file: BAM 파일 경로
+        reference_index: .fai 경로 (로컬 또는 hdfs://)
     
     Returns:
         처리 결과 딕셔너리
     """
     temp_files = []
+    work = local_scratch("orig_cov_")
     try:
+        ref_idx = download_if_hdfs(str(reference_index), work) if is_hdfs_uri(str(reference_index)) else str(reference_index)
         # 임시 파일 생성
         coverage_bed = create_temp_file(suffix=".bed", prefix=f"{sample_id}_coverage_")
         sorted_bed = create_temp_file(suffix=".bed", prefix=f"{sample_id}_sorted_")
@@ -78,7 +82,7 @@ def run_coverage_udf(sample_id: str, bam_file: str) -> dict:
         bigwig_cmd = [
             Config.BIGWIG_PATH,
             str(sorted_bed),
-            str(Config.REFERENCE_INDEX),
+            str(ref_idx),
             str(bigwig_file)
         ]
         
@@ -124,6 +128,7 @@ def run_coverage_udf(sample_id: str, bam_file: str) -> dict:
     finally:
         # 임시 파일 정리
         cleanup_temp_files(temp_files)
+        shutil.rmtree(work, ignore_errors=True)
 
 def calculate_coverage_stats(bed_file: Path) -> dict:
     """
@@ -177,7 +182,7 @@ def calculate_coverage_stats(bed_file: Path) -> dict:
 class CoverageCalculator:
     """Spark를 사용한 커버리지 계산 클래스"""
     
-    def __init__(self, spark: SparkSession, reference_index: Path = None):
+    def __init__(self, spark: SparkSession, reference_index: Optional[Union[Path, str]] = None):
         self.spark = spark
         self.temp_files = []
         self.reference_index = reference_index or Config.REFERENCE_INDEX
@@ -186,9 +191,17 @@ class CoverageCalculator:
         if not check_tool_availability("bedtools", Config.BEDTOOLS_PATH):
             raise RuntimeError("bedtools 도구를 찾을 수 없습니다. 설치 후 다시 시도하세요.")
         
-        # 참조 인덱스 파일 존재 확인
-        if not self.reference_index.exists():
-            raise FileNotFoundError(f"참조 인덱스 파일을 찾을 수 없습니다: {self.reference_index}")
+        r = self.reference_index
+        if isinstance(r, Path):
+            if not r.exists():
+                raise FileNotFoundError(f"참조 인덱스 파일을 찾을 수 없습니다: {r}")
+        elif is_hdfs_uri(str(r)):
+            if hdfs_file_size(str(r)) is None:
+                raise FileNotFoundError(f"HDFS에 참조 인덱스가 없습니다: {r}")
+        else:
+            p = Path(str(r))
+            if not p.exists():
+                raise FileNotFoundError(f"참조 인덱스 파일을 찾을 수 없습니다: {p}")
     
     def process_coverage(self, sam_processed_df: "pyspark.sql.DataFrame") -> "pyspark.sql.DataFrame":
         """
@@ -233,7 +246,8 @@ class CoverageCalculator:
             "coverage_result",
             coverage_udf(
                 col("samtools_result.sample_id"),
-                col("samtools_result.bam_file")
+                col("samtools_result.bam_file"),
+                lit(str(self.reference_index))
             )
         )
         
@@ -293,8 +307,11 @@ class CoverageCalculator:
         cleanup_temp_files(self.temp_files)
         self.temp_files.clear()
 
-def run_coverage_calculation(spark: SparkSession, sam_processed_df: "pyspark.sql.DataFrame", 
-                           reference_index: Path = None) -> "pyspark.sql.DataFrame":
+def run_coverage_calculation(
+    spark: SparkSession,
+    sam_processed_df: "pyspark.sql.DataFrame",
+    reference_index: Optional[Union[Path, str]] = None,
+) -> "pyspark.sql.DataFrame":
     """
     커버리지 계산 파이프라인을 실행합니다.
     

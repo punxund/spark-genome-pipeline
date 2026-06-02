@@ -14,14 +14,14 @@ echo "현재 호스트: $HOSTNAME"
 echo "=== HDFS 데이터 디렉토리 생성 ==="
 sudo mkdir -p /opt/hadoop/data/namenode
 sudo mkdir -p /opt/hadoop/data/datanode
-sudo chown -R kimhongs:kimhongs /opt/hadoop/data
+sudo chown -R kimhongs:mi21 /opt/hadoop/data
 sudo chmod -R 755 /opt/hadoop/data
 
 # HDFS 설정 파일 복사
 echo "=== HDFS 설정 파일 복사 ==="
 if [ -d "/workspace/pipeline/hadoop-config" ]; then
     sudo cp -r /workspace/pipeline/hadoop-config/* /opt/hadoop/etc/hadoop/
-    sudo chown -R kimhongs:kimhongs /opt/hadoop/etc/hadoop
+    sudo chown -R kimhongs:mi21 /opt/hadoop/etc/hadoop
     echo "HDFS 설정 파일 복사 완료"
 else
     echo "경고: hadoop-config 디렉토리를 찾을 수 없습니다."

@@ -17,6 +17,7 @@ from pathlib import Path
 from datetime import datetime
 import json
 import argparse
+from typing import List, Optional, Tuple, Union
 
 from pyspark.sql import SparkSession
 from pyspark.sql.functions import col
@@ -24,8 +25,9 @@ from pyspark.sql.functions import col
 # 프로젝트 모듈들 import
 from config_hybrid import HybridConfig as Config
 from utils import check_tool_availability, parse_fastq_pairs
-from preprocessing import run_preprocessing
-from alignment import run_alignment
+from hybrid_preprocessing import run_preprocessing
+from hybrid_alignment import run_alignment
+from hdfs_path_utils import ensure_hybrid_hdfs_workflowDirs, parse_fastq_pairs_hdfs
 
 # Python 라이브러리 기반 모듈들 import
 from pythontools.hybrid_sam_processing import run_sam_processing
@@ -61,6 +63,7 @@ class HybridGenomeAnalysisPipeline:
         
         # 필요한 디렉토리 생성
         Config.create_directories()
+        ensure_hybrid_hdfs_workflowDirs(Config)
         
         # 도구 사용 가능 여부 확인
         self._check_dependencies()
@@ -112,32 +115,40 @@ class HybridGenomeAnalysisPipeline:
         
         logger.info("모든 의존성 도구와 Python 라이브러리가 사용 가능합니다.")
     
-    def _check_input_files(self, reads_dir: Path = None) -> list:
-        """입력 파일들을 확인합니다."""
-        if reads_dir is None:
-            reads_dir = Config.HDFS_READS_DIR
-        
-        # HDFS 경로는 문자열이므로 exists() 체크를 다르게 처리
-        if isinstance(reads_dir, str) and reads_dir.startswith("hdfs://"):
-            # HDFS 경로는 나중에 Spark에서 체크
-            pass
-        elif not Path(reads_dir).exists():
-            raise FileNotFoundError(f"읽기 파일 디렉토리를 찾을 수 없습니다: {reads_dir}")
-        
-        # FASTQ 파일 쌍 파싱
-        fastq_pairs = parse_fastq_pairs(reads_dir)
-        
+    def _check_input_files(
+        self, reads_dir: Optional[Union[str, Path]] = None
+    ) -> List[Tuple]:
+        """입력 파일들을 확인합니다. HDFS·로컬 모두 지원."""
+        rdir = reads_dir if reads_dir is not None else Config.HDFS_READS_DIR
+        s = str(rdir)
+        if s.startswith("hdfs://"):
+            fastq_pairs = parse_fastq_pairs_hdfs(s)
+        else:
+            p = Path(rdir)
+            if not p.exists():
+                raise FileNotFoundError(
+                    f"읽기 파일 디렉토리를 찾을 수 없습니다: {reads_dir}"
+                )
+            fastq_pairs = parse_fastq_pairs(p)
+
         if not fastq_pairs:
-            raise ValueError(f"FASTQ 파일 쌍을 찾을 수 없습니다: {reads_dir}")
-        
+            raise ValueError(f"FASTQ 파일 쌍을 찾을 수 없습니다: {rdir}")
+
+        def _name(p) -> str:
+            return p.name if hasattr(p, "name") else str(p).rsplit("/", 1)[-1]
+
         logger.info(f"처리할 FASTQ 파일 쌍: {len(fastq_pairs)}개")
         for sample_id, r1_file, r2_file in fastq_pairs:
-            logger.info(f"  - {sample_id}: {r1_file.name}, {r2_file.name}")
-        
+            logger.info(f"  - {sample_id}: {_name(r1_file)}, {_name(r2_file)}")
+
         return fastq_pairs
-    
-    def run_pipeline(self, reads_dir: Path = None, reference_genome: Path = None, 
-                    reference_index: Path = None) -> dict:
+
+    def run_pipeline(
+        self,
+        reads_dir: Optional[Union[str, Path]] = None,
+        reference_genome: Optional[Union[str, Path]] = None,
+        reference_index: Optional[Union[str, Path]] = None,
+    ) -> dict:
         """
         전체 파이프라인을 실행합니다.
         
@@ -161,16 +172,20 @@ class HybridGenomeAnalysisPipeline:
         logger.info("=" * 80)
         
         try:
+            rdir = reads_dir if reads_dir is not None else Config.HDFS_READS_DIR
+            ref = reference_genome or Config.HDFS_REFERENCE_GENOME
+            ridx = reference_index or Config.HDFS_REFERENCE_INDEX
+
             # 입력 파일 확인
-            fastq_pairs = self._check_input_files(reads_dir)
-            
+            self._check_input_files(reads_dir)
+
             # 1단계: 전처리 (fastp)
             logger.info("\n" + "=" * 50)
             logger.info("1단계: FASTQ 전처리 (fastp)")
             logger.info("=" * 50)
             
             step1_start = time.time()
-            preprocessed_df = run_preprocessing(self.spark, reads_dir)
+            preprocessed_df = run_preprocessing(self.spark, rdir)
             
             # 전처리 결과를 파일로 저장
             preprocessed_file = Config.HDFS_RESULTS_DIR + "/preprocessed_results.parquet"
@@ -203,7 +218,7 @@ class HybridGenomeAnalysisPipeline:
             step2_start = time.time()
             # 저장된 전처리 결과를 읽어옴
             preprocessed_df = self.spark.read.parquet(str(preprocessed_file))
-            alignment_df = run_alignment(self.spark, preprocessed_df, reference_genome)
+            alignment_df = run_alignment(self.spark, preprocessed_df, ref)
             
             # 매핑 결과를 파일로 저장
             alignment_file = Config.HDFS_RESULTS_DIR + "/alignment_results.parquet"
@@ -273,7 +288,7 @@ class HybridGenomeAnalysisPipeline:
             step4_start = time.time()
             # 저장된 SAM 처리 결과를 읽어옴
             sam_processed_df = self.spark.read.parquet(str(sam_processed_file))
-            coverage_df = run_coverage_calculation(self.spark, sam_processed_df, reference_index)
+            coverage_df = run_coverage_calculation(self.spark, sam_processed_df, ridx)
             
             # 커버리지 결과를 파일로 저장
             coverage_file = Config.HDFS_RESULTS_DIR + "/coverage_results.parquet"
@@ -412,10 +427,10 @@ def main():
         # 파이프라인 실행
         pipeline = HybridGenomeAnalysisPipeline(spark)
         
-        reads_dir = Path(args.reads_dir) if args.reads_dir else None
-        reference_genome = Path(args.reference_genome) if args.reference_genome else None
-        reference_index = Path(args.reference_index) if args.reference_index else None
-        
+        reads_dir: Optional[Union[str, Path]] = args.reads_dir
+        reference_genome: Optional[Union[str, Path]] = args.reference_genome
+        reference_index: Optional[Union[str, Path]] = args.reference_index
+
         results = pipeline.run_pipeline(reads_dir, reference_genome, reference_index)
         
         # 결과 저장

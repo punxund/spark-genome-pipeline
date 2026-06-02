@@ -73,3 +73,7 @@ hdfs dfs -ls -R $HDFS_DATA_DIR/results/
 
 echo "로컬 결과 파일:"
 ls -la ./data/temp/
+
+
+
+

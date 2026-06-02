@@ -4,18 +4,36 @@ from pathlib import Path
 class HybridConfig:
     # HDFS 경로 설정
     HDFS_BASE = "hdfs://hongsik1.vm.informatik.hu-berlin.de:9000"
-    
-    # 데이터 경로 (HDFS)
-    HDFS_DATA_DIR = f"{HDFS_BASE}/genome"
+    # 루트(예: /genome)에 쓰기 권한이 없으면: export HDFS_DATA_NAMESPACE=/user/본인id/genome
+    _HDFS_DATA_NS = os.environ.get("HDFS_DATA_NAMESPACE", "/genome")
+    if not _HDFS_DATA_NS.startswith("/"):
+        _HDFS_DATA_NS = "/" + _HDFS_DATA_NS
+    HDFS_DATA_DIR = f"{HDFS_BASE}{_HDFS_DATA_NS}"
     HDFS_READS_DIR = f"{HDFS_DATA_DIR}/reads"
     HDFS_REFERENCE_GENOME = f"{HDFS_DATA_DIR}/ref_sequence_genB.fa"
     HDFS_REFERENCE_INDEX = f"{HDFS_DATA_DIR}/ref_sequence_genB.fa.fai"
-    
+
+    # 전체 workflow 중간/최종 산출(HDFS) — 도구(pysam 등)는 로컬 temp 후 업로드
+    HDFS_WORKFLOW = f"{HDFS_DATA_DIR}/workflow"
+    HDFS_WORK_TRIM = f"{HDFS_WORKFLOW}/trimmed"
+    HDFS_WORK_SAM = f"{HDFS_WORKFLOW}/sam"
+    HDFS_WORK_BAM = f"{HDFS_WORKFLOW}/bam"
+    HDFS_WORK_COVERAGE = f"{HDFS_WORKFLOW}/coverage"
+
+    # hybrid 모듈에서 Path 기대하는 이름과 호환 (HDFS URL 문자열)
+    REFERENCE_GENOME = HDFS_REFERENCE_GENOME
+    REFERENCE_INDEX = HDFS_REFERENCE_INDEX
+
     # 로컬 경로 (참조용)
     LOCAL_DATA_DIR = Path("data")
     LOCAL_READS_DIR = LOCAL_DATA_DIR / "reads"
     LOCAL_REFERENCE_GENOME = LOCAL_DATA_DIR / "ref_sequence_genB.fa"
     LOCAL_REFERENCE_INDEX = LOCAL_DATA_DIR / "ref_sequence_genB.fa.fai"
+
+    # 로컬: 로그·JSON 요약·UDF 임시 작업(도구 I/O)만 — 최종 파이프라인 산출은 HDFS_WORK_* 및 HDFS_RESULTS_DIR
+    TEMP_DIR = LOCAL_DATA_DIR / "temp"
+    # 레거시 코드 호환(로컬만 필요한 UDF 내부 temp): 실질적 최종 경로는 HDFS
+    RESULTS_DIR = LOCAL_DATA_DIR / "temp" / "hybrid_staging"
     
     # 결과 저장 경로 (HDFS)
     HDFS_RESULTS_DIR = f"{HDFS_DATA_DIR}/results/hybrid_pipeline"
@@ -34,7 +52,7 @@ class HybridConfig:
     
     # 파이프라인 설정
     PARTITION_SIZE = 500000  # 파티션 크기 감소 (더 빠른 처리)
-    MAX_MEMORY = "700g"  # 시스템 메모리 대부분 사용 (genCov와 동일)
+    MAX_MEMORY = "6g"  # driver / executor 기본 메모리
     
     # SAM 처리 설정
     SAM_PROCESSING_CONFIG = {
@@ -49,8 +67,8 @@ class HybridConfig:
     
     @classmethod
     def create_directories(cls):
-        """필요한 디렉토리들을 생성합니다."""
-        for directory in [cls.RESULTS_DIR, cls.TEMP_DIR]:
+        """로컬에 필요한 디렉터리를 생성합니다 (HDFS 경로는 별도 hdfs dfs -mkdir)."""
+        for directory in (cls.LOCAL_DATA_DIR, cls.TEMP_DIR, cls.RESULTS_DIR):
             directory.mkdir(parents=True, exist_ok=True)
     
     @classmethod

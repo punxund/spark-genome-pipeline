@@ -2,7 +2,7 @@ import subprocess
 import logging
 import os
 from pathlib import Path
-from typing import List, Tuple, Optional
+from typing import List, Tuple, Optional, Union
 import tempfile
 import shutil
 
@@ -138,6 +138,30 @@ def parse_fastq_pairs(reads_dir: Path) -> List[Tuple[str, Path, Path]]:
             logger.warning(f"R2 파일을 찾을 수 없음: {r2_file}")
     
     return fastq_pairs
+
+
+def get_fastq_pairs_for_pipeline(
+    reads_dir: Optional[Union[Path, str]] = None,
+) -> List[Tuple[str, str, str]]:
+    """
+    (sample_id, r1, r2) — 경로는 모두 str. 로컬 디렉터리(Path 또는 로컬 경로 str) 또는 HDFS 읽기 디렉터리( hdfs://... ).
+
+    HDFS 쌍 파싱은 hdfs_path_utils.parse_fastq_pairs_hdfs 를 사용한다.
+    """
+    from hdfs_path_utils import is_hdfs_uri, parse_fastq_pairs_hdfs
+
+    if reads_dir is None:
+        from config import Config
+        reads_dir = Config.READS_DIR
+
+    rs = str(reads_dir)
+    if is_hdfs_uri(rs):
+        return parse_fastq_pairs_hdfs(rs)
+
+    p = Path(reads_dir) if not isinstance(reads_dir, Path) else reads_dir
+    local_pairs = parse_fastq_pairs(p)
+    return [(sid, str(r1), str(r2)) for sid, r1, r2 in local_pairs]
+
 
 def get_file_size_mb(file_path: Path) -> float:
     """

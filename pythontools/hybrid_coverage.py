@@ -8,17 +8,19 @@ from pyspark.sql.functions import udf, col, lit
 from pyspark.sql.types import StructType, StructField, StringType, IntegerType, DoubleType
 import logging
 from pathlib import Path
-from typing import List, Tuple, Optional, Dict, Any
-import tempfile
+from typing import List, Tuple, Optional, Dict, Any, Union
 import shutil
 import os
 import json
 
 import sys
-import os
-sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+
+_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+if _root not in sys.path:
+    sys.path.insert(0, _root)
 
 from config_hybrid import HybridConfig as PyToolsConfig
+from hdfs_path_utils import download_if_hdfs, is_hdfs_uri, local_scratch, put_file_to_dir
 
 logger = logging.getLogger(__name__)
 
@@ -133,15 +135,17 @@ def run_pybedtools_coverage_udf(sample_id: str, bam_file: str, reference_index: 
         처리 결과 딕셔너리
     """
     temp_files = []
+    work = local_scratch("cov_")
     try:
-        config = PyToolsConfig.COVERAGE_CONFIG
-        
-        # pybedtools로 커버리지 계산 (Original과 동일한 방식)
-        bed_records, stats = calculate_coverage_with_pybedtools(
-            bam_file, 
-            reference_index
+        bam_local = download_if_hdfs(bam_file, work) if is_hdfs_uri(bam_file) else bam_file
+        ref_index_local = (
+            download_if_hdfs(reference_index, work)
+            if is_hdfs_uri(reference_index)
+            else reference_index
         )
-        
+
+        bed_records, stats = calculate_coverage_with_pybedtools(bam_local, ref_index_local)
+
         if not bed_records:
             return {
                 "sample_id": sample_id,
@@ -150,48 +154,55 @@ def run_pybedtools_coverage_udf(sample_id: str, bam_file: str, reference_index: 
                 "bigwig_file": None,
                 "stats_file": None,
                 "stats": None,
-                "error": "커버리지 계산에 실패했습니다."
+                "error": "커버리지 계산에 실패했습니다.",
             }
-        
-        # BED 파일 저장
-        bed_file = PyToolsConfig.RESULTS_DIR / f"{sample_id}_coverage.bed"
-        with open(bed_file, 'w') as f:
+
+        bed_path = work / f"{sample_id}_coverage.bed"
+        with open(bed_path, "w") as f:
             for record in bed_records:
-                f.write(record + '\n')
-        
-        # 참조 게놈 크기 읽기
+                f.write(record + "\n")
+
         chrom_sizes = {}
-        with open(reference_index, 'r') as f:
+        with open(ref_index_local, "r") as f:
             for line in f:
-                parts = line.strip().split('\t')
+                parts = line.strip().split("\t")
                 if len(parts) >= 2:
                     chrom_sizes[parts[0]] = int(parts[1])
-        
-        # pybigwig로 BigWig 파일 생성
-        bigwig_file = PyToolsConfig.RESULTS_DIR / f"{sample_id}.bw"
-        bigwig_success = create_bigwig_with_pybigwig(bed_records, chrom_sizes, str(bigwig_file))
-        
-        # 통계 파일 저장
-        stats_file = PyToolsConfig.RESULTS_DIR / f"{sample_id}_pybedtools_coverage_stats.json"
-        with open(stats_file, 'w') as f:
+
+        bigwig_path = work / f"{sample_id}.bw"
+        bigwig_success = create_bigwig_with_pybigwig(
+            bed_records, chrom_sizes, str(bigwig_path)
+        )
+
+        stats_path = work / f"{sample_id}_pybedtools_coverage_stats.json"
+        with open(stats_path, "w") as f:
             json.dump(stats, f, indent=2)
-        
+
+        bed_hdfs = put_file_to_dir(bed_path, PyToolsConfig.HDFS_WORK_COVERAGE)
+        stats_hdfs = put_file_to_dir(stats_path, PyToolsConfig.HDFS_WORK_COVERAGE)
+        if bigwig_success:
+            bigwig_hdfs = put_file_to_dir(bigwig_path, PyToolsConfig.HDFS_WORK_COVERAGE)
+        else:
+            bigwig_hdfs = None
+
         logger.info(f"pybedtools + pybigwig 커버리지 계산 완료: {sample_id}")
         logger.info(f"  - 총 영역: {stats.get('total_regions', 0)}")
         logger.info(f"  - 평균 커버리지: {stats.get('mean_coverage', 0):.2f}")
-        
+
         return {
             "sample_id": sample_id,
             "status": "success",
-            "bed_file": str(bed_file),
-            "bigwig_file": str(bigwig_file) if bigwig_success else None,
-            "stats_file": str(stats_file),
+            "bed_file": bed_hdfs,
+            "bigwig_file": bigwig_hdfs,
+            "stats_file": stats_hdfs,
             "stats": stats,
-            "error": None
+            "error": None,
         }
-            
+
     except Exception as e:
-        logger.error(f"pybedtools + pybigwig 커버리지 계산 중 예외 발생: {sample_id} - {str(e)}")
+        logger.error(
+            f"pybedtools + pybigwig 커버리지 계산 중 예외 발생: {sample_id} - {str(e)}"
+        )
         return {
             "sample_id": sample_id,
             "status": "error",
@@ -199,25 +210,27 @@ def run_pybedtools_coverage_udf(sample_id: str, bam_file: str, reference_index: 
             "bigwig_file": None,
             "stats_file": None,
             "stats": None,
-            "error": str(e)
+            "error": str(e),
         }
     finally:
-        # 임시 파일 정리
         for temp_file in temp_files:
             if os.path.exists(temp_file):
                 os.remove(temp_file)
+        shutil.rmtree(work, ignore_errors=True)
 
 class HybridCoverageCalculator:
     """pybedtools + pybigwig를 사용한 커버리지 계산 클래스"""
     
-    def __init__(self, spark: SparkSession, reference_index: Path = None):
+    def __init__(self, spark: SparkSession, reference_index: Optional[Union[str, Path]] = None):
         self.spark = spark
-        self.reference_index = reference_index or PyToolsConfig.REFERENCE_INDEX
+        self.reference_index = reference_index or PyToolsConfig.HDFS_REFERENCE_INDEX
         self.temp_files = []
-        
-        # 참조 인덱스 확인
-        if not self.reference_index.exists():
-            raise FileNotFoundError(f"참조 인덱스 파일을 찾을 수 없습니다: {self.reference_index}")
+        ri = self.reference_index
+        if isinstance(ri, str) and ri.startswith("hdfs://"):
+            return
+        p = Path(ri) if not isinstance(ri, Path) else ri
+        if not p.exists():
+            raise FileNotFoundError(f"참조 인덱스 파일을 찾을 수 없습니다: {ri}")
     
     def calculate_coverage(self, sam_processed_df: "pyspark.sql.DataFrame") -> "pyspark.sql.DataFrame":
         """
@@ -272,8 +285,11 @@ class HybridCoverageCalculator:
         logger.info("pybedtools + pybigwig 커버리지 계산 완료")
         return result_df
 
-def run_coverage_calculation(spark: SparkSession, sam_processed_df: "pyspark.sql.DataFrame",
-                           reference_index: Path = None) -> "pyspark.sql.DataFrame":
+def run_coverage_calculation(
+    spark: SparkSession,
+    sam_processed_df: "pyspark.sql.DataFrame",
+    reference_index: Optional[Union[str, Path]] = None,
+) -> "pyspark.sql.DataFrame":
     """
     pybedtools + pybigwig를 사용한 커버리지 계산을 실행합니다.
     

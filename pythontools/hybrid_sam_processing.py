@@ -15,10 +15,13 @@ import os
 import json
 
 import sys
-import os
-sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+
+_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+if _root not in sys.path:
+    sys.path.insert(0, _root)
 
 from config_hybrid import HybridConfig as PyToolsConfig
+from hdfs_path_utils import download_if_hdfs, local_scratch, put_file_to_dir, is_hdfs_uri
 
 logger = logging.getLogger(__name__)
 
@@ -34,6 +37,7 @@ def run_pysam_processing_udf(sample_id: str, sam_file: str) -> dict:
         처리 결과 딕셔너리
     """
     temp_files = []
+    work = local_scratch("pysam_")
     try:
         import pysam
         
@@ -41,12 +45,12 @@ def run_pysam_processing_udf(sample_id: str, sam_file: str) -> dict:
         
         # SAM 파일을 pysam으로 읽기
         logger.info(f"pysam으로 SAM 파일 읽기 시작: {sample_id}")
+        sam_local = download_if_hdfs(sam_file, work) if is_hdfs_uri(sam_file) else sam_file
         
-        # SAM 파일을 BAM으로 변환 (pysam은 BAM 형식을 더 효율적으로 처리)
-        bam_file = PyToolsConfig.RESULTS_DIR / f"{sample_id}_filtered.bam"
+        bam_file = work / f"{sample_id}_filtered.bam"
         
         # SAM 파일을 pysam으로 읽어서 처리
-        with pysam.AlignmentFile(sam_file, "r") as sam_in:
+        with pysam.AlignmentFile(sam_local, "r") as sam_in:
             # 헤더 정보 가져오기
             header = sam_in.header.copy()
             
@@ -107,11 +111,12 @@ def run_pysam_processing_udf(sample_id: str, sam_file: str) -> dict:
             "average_mapping_quality": sum(r.mapping_quality for r in filtered_records) / len(filtered_records) if filtered_records else 0
         }
         
-        # 통계 파일 저장
-        stats_file = PyToolsConfig.RESULTS_DIR / f"{sample_id}_pysam_stats.json"
-        with open(stats_file, 'w') as f:
+        stats_local = work / f"{sample_id}_pysam_stats.json"
+        with open(stats_local, "w") as f:
             json.dump(stats, f, indent=2)
         
+        bam_hdfs = put_file_to_dir(bam_file, PyToolsConfig.HDFS_WORK_BAM)
+        stats_hdfs = put_file_to_dir(stats_local, PyToolsConfig.HDFS_WORK_BAM)
         logger.info(f"pysam SAM 처리 완료: {sample_id}")
         logger.info(f"  - 총 리드: {total_reads}")
         logger.info(f"  - 매핑된 리드: {mapped_reads}")
@@ -120,8 +125,8 @@ def run_pysam_processing_udf(sample_id: str, sam_file: str) -> dict:
         return {
             "sample_id": sample_id,
             "status": "success",
-            "bam_file": str(bam_file),
-            "stats_file": str(stats_file),
+            "bam_file": bam_hdfs,
+            "stats_file": stats_hdfs,
             "stats": stats,
             "error": None
         }
@@ -147,10 +152,10 @@ def run_pysam_processing_udf(sample_id: str, sam_file: str) -> dict:
             "error": str(e)
         }
     finally:
-        # 임시 파일 정리
         for temp_file in temp_files:
             if os.path.exists(temp_file):
                 os.remove(temp_file)
+        shutil.rmtree(work, ignore_errors=True)
 
 class HybridSAMProcessor:
     """pysam을 사용한 SAM 처리 클래스"""

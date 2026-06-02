@@ -3,13 +3,14 @@ from pyspark.sql.functions import udf, col, lit
 from pyspark.sql.types import StructType, StructField, StringType
 import logging
 from pathlib import Path
-from typing import List, Tuple, Optional
+from typing import List, Tuple, Optional, Union
 import tempfile
 import shutil
 import os
 
 from config import Config
 from utils import run_command, check_tool_availability, create_temp_file, cleanup_temp_files
+from hdfs_path_utils import is_hdfs_uri, local_scratch, download_reference_fasta_and_index, hdfs_file_size
 
 logger = logging.getLogger(__name__)
 
@@ -27,14 +28,19 @@ def run_bwa_mem_udf(sample_id: str, r1_file: str, r2_file: str, reference_genome
         처리 결과 딕셔너리
     """
     temp_files = []
+    work = local_scratch("orig_bwa_")
     try:
+        ref = reference_genome
+        if is_hdfs_uri(str(ref)):
+            ref = download_reference_fasta_and_index(str(ref), work)
+
         # 참조 게놈 인덱싱 확인 및 생성
-        index_files = [f"{reference_genome}.amb", f"{reference_genome}.ann", f"{reference_genome}.bwt", f"{reference_genome}.pac", f"{reference_genome}.sa"]
+        index_files = [f"{ref}.amb", f"{ref}.ann", f"{ref}.bwt", f"{ref}.pac", f"{ref}.sa"]
         index_exists = all(Path(f).exists() for f in index_files)
         
         if not index_exists:
-            logger.info(f"참조 게놈 인덱싱 시작: {reference_genome}")
-            index_cmd = [Config.BWA_PATH, "index", reference_genome]
+            logger.info(f"참조 게놈 인덱싱 시작: {ref}")
+            index_cmd = [Config.BWA_PATH, "index", ref]
             index_result = run_command(index_cmd, check=False)
             
             if index_result.returncode != 0:
@@ -45,7 +51,7 @@ def run_bwa_mem_udf(sample_id: str, r1_file: str, r2_file: str, reference_genome
                     "sam_file": None,
                     "error": f"참조 게놈 인덱싱 실패: {index_result.stderr}"
                 }
-            logger.info(f"참조 게놈 인덱싱 완료: {reference_genome}")
+            logger.info(f"참조 게놈 인덱싱 완료: {ref}")
         
         # 임시 SAM 파일 생성
         sam_file = create_temp_file(suffix=".sam", prefix=f"{sample_id}_")
@@ -55,7 +61,7 @@ def run_bwa_mem_udf(sample_id: str, r1_file: str, r2_file: str, reference_genome
         cmd = [
             Config.BWA_PATH, "mem",
             "-t", "16",  # 16개 스레드 사용 (72코어 중 일부)
-            reference_genome,
+            ref,
             r1_file,
             r2_file
         ]
@@ -98,11 +104,12 @@ def run_bwa_mem_udf(sample_id: str, r1_file: str, r2_file: str, reference_genome
     finally:
         # 임시 파일 정리
         cleanup_temp_files(temp_files)
+        shutil.rmtree(work, ignore_errors=True)
 
 class BWAAligner:
     """Spark를 사용한 BWA 읽기 매핑 클래스"""
     
-    def __init__(self, spark: SparkSession, reference_genome: Path = None):
+    def __init__(self, spark: SparkSession, reference_genome: Optional[Union[Path, str]] = None):
         self.spark = spark
         self.temp_files = []
         self.reference_genome = reference_genome or Config.REFERENCE_GENOME
@@ -113,8 +120,17 @@ class BWAAligner:
             raise RuntimeError("BWA 도구를 찾을 수 없습니다. 설치 후 다시 시도하세요.")
         
         # 참조 게놈 파일 존재 확인
-        if not self.reference_genome.exists():
-            raise FileNotFoundError(f"참조 게놈 파일을 찾을 수 없습니다: {self.reference_genome}")
+        r = self.reference_genome
+        if isinstance(r, Path):
+            if not r.exists():
+                raise FileNotFoundError(f"참조 게놈 파일을 찾을 수 없습니다: {r}")
+        elif is_hdfs_uri(str(r)):
+            if hdfs_file_size(str(r)) is None:
+                raise FileNotFoundError(f"HDFS에 참조 게놈이 없습니다: {r}")
+        else:
+            p = Path(str(r))
+            if not p.exists():
+                raise FileNotFoundError(f"참조 게놈 파일을 찾을 수 없습니다: {p}")
     
     def index_reference_genome(self) -> bool:
         """
@@ -204,8 +220,11 @@ class BWAAligner:
         cleanup_temp_files(self.temp_files)
         self.temp_files.clear()
 
-def run_alignment(spark: SparkSession, preprocessed_df: "pyspark.sql.DataFrame", 
-                 reference_genome: Path = None) -> "pyspark.sql.DataFrame":
+def run_alignment(
+    spark: SparkSession,
+    preprocessed_df: "pyspark.sql.DataFrame",
+    reference_genome: Optional[Union[Path, str]] = None,
+) -> "pyspark.sql.DataFrame":
     """
     읽기 매핑 파이프라인을 실행합니다.
     

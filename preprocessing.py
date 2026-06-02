@@ -3,12 +3,13 @@ from pyspark.sql.functions import udf, col, lit
 from pyspark.sql.types import StructType, StructField, StringType, ArrayType
 import logging
 from pathlib import Path
-from typing import List, Tuple
+from typing import List, Tuple, Optional, Union
 import tempfile
 import shutil
 
 from config import Config
 from utils import run_command, check_tool_availability, create_temp_file, cleanup_temp_files
+from hdfs_path_utils import is_hdfs_uri, local_scratch, download_if_hdfs
 
 logger = logging.getLogger(__name__)
 
@@ -25,7 +26,11 @@ def run_fastp_udf(sample_id: str, r1_file: str, r2_file: str) -> dict:
         처리 결과 딕셔너리
     """
     temp_files = []
+    work = local_scratch("orig_fp_")
     try:
+        r1_local = download_if_hdfs(r1_file, work) if is_hdfs_uri(str(r1_file)) else r1_file
+        r2_local = download_if_hdfs(r2_file, work) if is_hdfs_uri(str(r2_file)) else r2_file
+
         # 임시 출력 파일 생성
         output_r1 = create_temp_file(suffix=".trimmed.fastq", prefix=f"{sample_id}_R1_")
         output_r2 = create_temp_file(suffix=".trimmed.fastq", prefix=f"{sample_id}_R2_")
@@ -37,8 +42,8 @@ def run_fastp_udf(sample_id: str, r1_file: str, r2_file: str) -> dict:
         # fastp 명령어 실행
         cmd = [
             Config.FASTP_PATH,
-            "-i", r1_file,
-            "-I", r2_file,
+            "-i", r1_local,
+            "-I", r2_local,
             "-o", str(output_r1),
             "-O", str(output_r2),
             "--detect_adapter_for_pe",
@@ -98,6 +103,7 @@ def run_fastp_udf(sample_id: str, r1_file: str, r2_file: str) -> dict:
     finally:
         # 임시 파일 정리
         cleanup_temp_files(temp_files)
+        shutil.rmtree(work, ignore_errors=True)
 
 class FastQPreprocessor:
     """Spark를 사용한 FASTQ 전처리 클래스"""
@@ -110,16 +116,26 @@ class FastQPreprocessor:
         if not check_tool_availability("fastp", Config.FASTP_PATH):
             raise RuntimeError("fastp 도구를 찾을 수 없습니다. 설치 후 다시 시도하세요.")
     
-    def create_fastq_dataframe(self, fastq_pairs: List[Tuple[str, Path, Path]]) -> "pyspark.sql.DataFrame":
+    def create_fastq_dataframe(self, fastq_pairs: List[Tuple[str, str, str]]) -> "pyspark.sql.DataFrame":
         """
         FASTQ 파일 쌍으로부터 Spark DataFrame을 생성합니다.
         
         Args:
-            fastq_pairs: (샘플ID, R1 파일 경로, R2 파일 경로) 튜플 리스트
+            fastq_pairs: (샘플ID, R1 경로, R2 경로) — str (로컬 또는 hdfs://)
         
         Returns:
             Spark DataFrame
         """
+        from hdfs_path_utils import hdfs_file_size
+
+        def _size_mb(p: str) -> str:
+            if is_hdfs_uri(str(p)):
+                sz = hdfs_file_size(str(p))
+                if sz is None:
+                    return "0.00"
+                return f"{sz / (1024 * 1024):.2f}"
+            return f"{Path(p).stat().st_size / (1024*1024):.2f}"
+
         # DataFrame 스키마 정의
         schema = StructType([
             StructField("sample_id", StringType(), False),
@@ -132,8 +148,8 @@ class FastQPreprocessor:
         # 데이터 준비
         data = []
         for sample_id, r1_file, r2_file in fastq_pairs:
-            r1_size = f"{r1_file.stat().st_size / (1024*1024):.2f}"
-            r2_size = f"{r2_file.stat().st_size / (1024*1024):.2f}"
+            r1_size = _size_mb(r1_file)
+            r2_size = _size_mb(r2_file)
             
             data.append({
                 "sample_id": sample_id,
@@ -146,12 +162,12 @@ class FastQPreprocessor:
         logger.info(f"FASTQ DataFrame 생성: {len(data)}개 샘플")
         return self.spark.createDataFrame(data, schema)
     
-    def process_fastq_files(self, fastq_pairs: List[Tuple[str, Path, Path]]) -> "pyspark.sql.DataFrame":
+    def process_fastq_files(self, fastq_pairs: List[Tuple[str, str, str]]) -> "pyspark.sql.DataFrame":
         """
         FASTQ 파일들을 전처리합니다.
         
         Args:
-            fastq_pairs: (샘플ID, R1 파일 경로, R2 파일 경로) 튜플 리스트
+            fastq_pairs: (샘플ID, R1 경로, R2 경로) 튜플 리스트 (str)
         
         Returns:
             처리 결과 DataFrame
@@ -191,27 +207,26 @@ class FastQPreprocessor:
         cleanup_temp_files(self.temp_files)
         self.temp_files.clear()
 
-def run_preprocessing(spark: SparkSession, reads_dir: Path = None) -> "pyspark.sql.DataFrame":
+def run_preprocessing(
+    spark: SparkSession, reads_dir: Optional[Union[Path, str]] = None
+) -> "pyspark.sql.DataFrame":
     """
     전처리 파이프라인을 실행합니다.
     
     Args:
         spark: SparkSession
-        reads_dir: 읽기 파일 디렉토리 (기본값: Config.READS_DIR)
+        reads_dir: 로컬 읽기 디렉터리 또는 HDFS (hdfs://.../.../reads)
     
     Returns:
         처리 결과 DataFrame
     """
-    if reads_dir is None:
-        reads_dir = Config.READS_DIR
-    
-    from utils import parse_fastq_pairs
-    
-    # FASTQ 파일 쌍 파싱
-    fastq_pairs = parse_fastq_pairs(reads_dir)
+    from utils import get_fastq_pairs_for_pipeline
+
+    fastq_pairs = get_fastq_pairs_for_pipeline(reads_dir)
     
     if not fastq_pairs:
-        raise ValueError(f"FASTQ 파일 쌍을 찾을 수 없습니다: {reads_dir}")
+        rdir = reads_dir if reads_dir is not None else Config.READS_DIR
+        raise ValueError(f"FASTQ 파일 쌍을 찾을 수 없습니다: {rdir}")
     
     # 전처리 실행
     preprocessor = FastQPreprocessor(spark)

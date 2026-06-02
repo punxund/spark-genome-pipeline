@@ -9,3 +9,7 @@
         <value>/tmp/hadoop-${user.name}</value>
     </property>
 </configuration>
+
+
+
+
